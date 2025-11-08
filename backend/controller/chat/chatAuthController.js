@@ -16,30 +16,35 @@ const sendOtpEmailHelper = async (email, otp) => {
 
     const transporter = nodemailer.createTransport({
       host: "smtp.gmail.com",
-      port: 587, // ✅ TLS Port (more reliable)
-      secure: false, // ✅ must be false for port 587
+      port: 587,
+      secure: false,
       auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS,
       },
-      tls: {
-        rejectUnauthorized: false, // ✅ Prevent issues with local SSL certs
-      },
+      tls: { rejectUnauthorized: false },
+      connectionTimeout: 10000, // ✅ Stop hanging after 10s
     });
 
     const info = await transporter.sendMail({
       from: `"T'Chat App" <${process.env.EMAIL_USER}>`,
       to: email,
       subject: "Your Chat Login OTP",
-      text: `Your OTP is ${otp}. It will expire in 5 minutes.`,
+      html: `
+        <div style="font-family: Arial; color: #333;">
+          <h2>🔐 OTP Verification</h2>
+          <p>Your OTP is <b>${otp}</b>. It expires in <b>5 minutes</b>.</p>
+        </div>
+      `,
     });
 
-    console.log("✅ Email sent successfully:", info.response);
+    console.log("✅ OTP Email sent successfully:", info.response);
   } catch (err) {
-    console.error("❌ Email send error:", err.message);
-    throw new Error("Failed to send OTP email");
+    console.error("❌ OTP Send Error:", err.message);
+    throw new Error("Failed to send OTP email — check SMTP access or credentials.");
   }
 };
+
 
 // --------------------- HELPER: SAVE BASE64 IMAGE ---------------------
 const saveBase64Image = async (base64String) => {
@@ -189,25 +194,52 @@ const chatSignupController = async (req, res) => {
 const chatSendOtpController = async (req, res) => {
   try {
     const { email } = req.body;
-    if (!email)
-      return res
-        .status(400)
-        .json({ success: false, message: "Email is required" });
 
+    // 1️⃣ Validate input
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is required",
+      });
+    }
+
+    // 2️⃣ Check user existence
     const user = await ChatUser.findOne({ email });
-    if (!user)
-      return res.status(404).json({ success: false, message: "User not found" });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
 
+    // 3️⃣ Generate OTP & expiry
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     user.otp = otp;
     user.otpExpires = Date.now() + 5 * 60 * 1000;
     await user.save();
 
-    await sendOtpEmailHelper(email, otp);
-    res.json({ success: true, message: "OTP sent to your email" });
+    // 4️⃣ Attempt to send email
+    try {
+      await sendOtpEmailHelper(email, otp);
+      console.log(`📩 OTP ${otp} sent successfully to ${email}`);
+      return res.status(200).json({
+        success: true,
+        message: "OTP sent successfully to your email address.",
+      });
+    } catch (mailErr) {
+      console.error("❌ Email sending failed:", mailErr.message);
+      return res.status(500).json({
+        success: false,
+        message:
+          "Could not send OTP. Please check your email configuration or try again later.",
+      });
+    }
   } catch (err) {
-    console.error("OTP Send Error:", err);
-    res.status(500).json({ success: false, message: "Error sending OTP" });
+    console.error("💥 OTP Send Error:", err.message);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error while sending OTP",
+    });
   }
 };
 
