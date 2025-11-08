@@ -1,8 +1,8 @@
-const bcrypt = require('bcryptjs');
+const bcrypt = require("bcryptjs");
 const userModel = require("../../models/userModel");
-const jwt = require('jsonwebtoken');
+const jwt = require("jsonwebtoken");
 const os = require("os");
-const axios = require('axios');
+const axios = require("axios");
 const { io } = require("../socket/initSocket"); // ✅ socket instance import
 
 async function userSignInController(req, res) {
@@ -24,60 +24,62 @@ async function userSignInController(req, res) {
       req.headers["x-forwarded-for"] || req.socket.remoteAddress || "Unknown";
 
     // normalize IPv4 if present
-    if (typeof ipAddress === 'string' && ipAddress.includes('::ffff:')) {
-      ipAddress = ipAddress.split('::ffff:').pop();
+    if (typeof ipAddress === "string" && ipAddress.includes("::ffff:")) {
+      ipAddress = ipAddress.split("::ffff:").pop();
     }
 
     // detect local IP
-    const isLocal = ipAddress === '::1' || ipAddress === '127.0.0.1' || ipAddress === 'Unknown';
+    const isLocal =
+      ipAddress === "::1" ||
+      ipAddress === "127.0.0.1" ||
+      ipAddress === "Unknown";
 
     if (!Array.isArray(user.logins)) user.logins = [];
 
-    // default values
-    let city = "Unknown";
-    let state = "Unknown";
-    let country = "Unknown";
-    let latitude = null;
-    let longitude = null;
+    // default location values
+    let city = "Unknown",
+      state = "Unknown",
+      country = "Unknown",
+      latitude = null,
+      longitude = null;
 
     if (!isLocal) {
       try {
-        // IP-based geolocation
-        const geoRes = await axios.get(`http://ip-api.com/json/${ipAddress}?fields=status,message,country,regionName,city,lat,lon,query`);
+        const geoRes = await axios.get(
+          `http://ip-api.com/json/${ipAddress}?fields=status,message,country,regionName,city,lat,lon,query`
+        );
         const geo = geoRes.data;
 
-        if (geo && geo.status === 'success') {
+        if (geo && geo.status === "success") {
           city = geo.city || "Unknown";
           state = geo.regionName || "Unknown";
           country = geo.country || "Unknown";
           latitude = geo.lat || null;
           longitude = geo.lon || null;
-        } else {
-          city = "Unknown";
-          state = "Unknown";
-          country = "Unknown";
         }
 
         // fallback: OpenStreetMap geocoding if lat/lon not available
         if ((latitude === null || longitude === null) && city !== "Unknown") {
-          const osmRes = await axios.get('https://nominatim.openstreetmap.org/search', {
-            params: { format: 'json', q: `${city}, ${state}, ${country}` }
-          });
+          const osmRes = await axios.get(
+            "https://nominatim.openstreetmap.org/search",
+            {
+              params: { format: "json", q: `${city}, ${state}, ${country}` },
+            }
+          );
           if (osmRes.data.length > 0) {
             latitude = parseFloat(osmRes.data[0].lat);
             longitude = parseFloat(osmRes.data[0].lon);
           }
         }
-
       } catch (geoErr) {
         console.error("Geo lookup error:", geoErr.message || geoErr);
       }
     } else {
-      // local dev fallback (Mumbai coordinates)
+      // local fallback (Mumbai coordinates)
       city = "Local";
       state = "Local";
       country = "Local";
-      latitude = 19.0760;
+      latitude = 19.076;
       longitude = 72.8777;
     }
 
@@ -100,7 +102,7 @@ async function userSignInController(req, res) {
     user.isOnline = true;
     await user.save();
 
-    // ✅ Send real-time status to all ChatUsers (no lastActive)
+    // ✅ Send real-time status to all ChatUsers
     if (io()) {
       io().emit("admin_status", {
         adminId: user._id.toString(),
@@ -109,20 +111,23 @@ async function userSignInController(req, res) {
       console.log("📢 Admin online broadcasted via socket");
     }
 
-    // create JWT
+    // ✅ Create JWT
     const tokenData = { _id: user._id, email: user.email, role: user.role };
     const token = jwt.sign(tokenData, process.env.TOKEN_SECRET_KEY, {
-      expiresIn: "1d",
+      expiresIn: "7d",
     });
 
+    // ✅ Send cookie with proper cross-origin config
     res
-      .status(200)
       .cookie("token", token, {
-        maxAge: 1 * 24 * 60 * 60 * 1000,
         httpOnly: true,
-        sameSite: "strict",
+        secure: process.env.NODE_ENV === "production", // ✅ for HTTPS on Render
+        sameSite: "None", // ✅ required for cross-domain (frontend ↔ backend)
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
       })
+      .status(200)
       .json({
+        success: true,
         message: "Login successful",
         data: {
           token,
@@ -133,10 +138,9 @@ async function userSignInController(req, res) {
             role: user.role,
             loginCount: user.loginCount,
             logins: user.logins,
-            isOnline: true, // ✅ added field
+            isOnline: true,
           },
         },
-        success: true,
         error: false,
       });
   } catch (err) {
