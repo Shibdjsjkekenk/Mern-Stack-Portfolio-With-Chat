@@ -1,0 +1,58 @@
+# ==========================================================
+# ✅ Node.js / Express Backend Git Ignore
+# ==========================================================
+
+# Dependency directories
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment files (important!)
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs
+*.log
+debug.log
+error.log
+
+# Uploads & local storage folders
+uploads/
+public/uploads/
+tmp/
+*.tmp
+
+# Build outputs
+dist/
+build/
+.cache/
+.next/
+out/
+coverage/
+
+# System files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# IDE / Editor folders
+.vscode/
+.idea/
+*.code-workspace
+
+# OS junk files
+ehthumbs.db
+Desktop.ini
+
+# ==========================================================
+# Optional: Keep empty upload folder in Git
+# ==========================================================
+# Uncomment next lines if you want to keep the uploads folder
+# but not the files inside it
+# uploads/*
+# !uploads/.gitkeep
