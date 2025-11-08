@@ -10,25 +10,33 @@ async function userLogout(req, res) {
         $set: { isOnline: false, lastActive: new Date() },
       });
 
-      // ✅ Broadcast only to ChatUsers (not other admins)
+      // ✅ Broadcast offline status to all connected chat users
       const ioInstance = io();
       if (ioInstance) {
-        // Filter out only ChatUsers socket rooms if you store them by type
         ioInstance.emit("admin_status", {
           adminId: adminId.toString(),
           isOnline: false,
         });
-        console.log("📡 Sent admin_status: false to all users");
+        console.log("📡 Admin marked offline via socket broadcast:", adminId);
       }
     }
 
+    // ✅ Properly clear cookie for both HTTP & HTTPS (Render-ready)
     return res
       .status(200)
-      .cookie("token", "", { maxAge: 0 })
+      .clearCookie("token", {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production", // ✅ ensures HTTPS compatibility
+        sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax",
+      })
       .json({ message: "Logged out successfully.", success: true });
   } catch (err) {
-    console.error("Logout error:", err);
-    res.json({ message: err.message || err, error: true, success: false });
+    console.error("❌ Logout error:", err);
+    res.status(500).json({
+      message: err.message || "Logout failed",
+      error: true,
+      success: false,
+    });
   }
 }
 
